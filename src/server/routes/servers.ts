@@ -3,10 +3,13 @@ import path from "path";
 import { requireAuth } from "../middleware/auth.js";
 import { getServers, createServer, getServer, deleteServer, startServer, stopServer, killServer, restartServer, changeServerVersion, changeJavaVersion, getFiles, uploadFile, uploadChunk, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, unzipFile, zipFiles, installPlugin, installMod, importModpack, updateResources, updateSuspend , createFile, createDirectory, downloadFile, installModpackFromMarketplace, listInstalledPlugins, removeInstalledPlugin } from "../controllers/servers.js";
 import { getContainerLogs } from "../services/docker.js";
+import { getWorlds, createWorldHandler, activateWorldHandler, deleteWorldHandler, duplicateWorldHandler, downloadWorldHandler, backupWorldHandler, importWorldHandler } from "../controllers/worlds.js";
+import { getScheduleHandler, putScheduleHandler, deleteScheduleHandler, runScheduleNowHandler, verifyBackupHandler, restoreBackupHandler } from "../controllers/backupExtras.js";
 import multer from "multer";
 
 const router = express.Router();
 const upload = multer({ dest: path.join(process.cwd(), ".data/temp/") });
+const worldUpload = multer({ dest: path.join(process.cwd(), ".data/temp/"), limits: { fileSize: 2 * 1024 * 1024 * 1024 } });
 
 router.use(requireAuth);
 
@@ -117,6 +120,24 @@ router.get("/:id/backups", getBackups);
 router.post("/:id/backups", createBackup);
 router.get("/:id/backups/:filename", downloadBackup);
 router.delete("/:id/backups/:filename", deleteBackup);
+
+// Scheduled backups, verification and restore.
+router.get("/:id/backup-schedule", getScheduleHandler);
+router.put("/:id/backup-schedule", putScheduleHandler);
+router.delete("/:id/backup-schedule", deleteScheduleHandler);
+router.post("/:id/backup-schedule/run", runScheduleNowHandler);
+router.post("/:id/backups/:filename/verify", verifyBackupHandler);
+router.post("/:id/backups/:filename/restore", restoreBackupHandler);
+
+// Minecraft world management.
+router.get("/:id/worlds", getWorlds);
+router.post("/:id/worlds", createWorldHandler);
+router.post("/:id/worlds/import", worldUpload.single("archive"), importWorldHandler);
+router.post("/:id/worlds/:name/activate", activateWorldHandler);
+router.post("/:id/worlds/:name/duplicate", duplicateWorldHandler);
+router.post("/:id/worlds/:name/backup", backupWorldHandler);
+router.get("/:id/worlds/:name/download", downloadWorldHandler);
+router.delete("/:id/worlds/:name", deleteWorldHandler);
 
 
 router.get("/:id/playit", async (req, res) => {

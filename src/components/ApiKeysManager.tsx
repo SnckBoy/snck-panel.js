@@ -45,6 +45,17 @@ export default function ApiKeysManager() {
     }
   };
 
+  const handleRegenerateKey = async (id: string) => {
+    if (!confirm("Regenerate this API key? The previous secret stops working immediately.")) return;
+    try {
+      const res = await axios.post(`/api/admin/api-keys/${id}/regenerate`);
+      setNewKeyString(res.data.key);
+      fetchApiKeys();
+    } catch (e) {
+      console.error("Failed to regenerate API key", e);
+    }
+  };
+
   const handleDeleteKey = async (id: string) => {
     if (!confirm("Are you sure you want to delete this API key? This action cannot be undone.")) return;
     try {
@@ -117,9 +128,18 @@ export default function ApiKeysManager() {
                 <div className="text-xs text-muted-foreground mt-1 flex flex-col sm:flex-row sm:gap-4">
                   <span>Created: {new Date(key.created_at).toLocaleDateString()}</span>
                   <span>Last used: {key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : 'Never'}</span>
+                  <span>Expires: {key.expires_at ? new Date(key.expires_at).toLocaleDateString() : 'Never'}</span>
+                  <span className="font-mono">Scopes: {Array.isArray(key.scopes) ? key.scopes.join(", ") : "—"}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleRegenerateKey(key.id)}
+                  className="p-1.5 text-muted-foreground bg-muted border border-transparent hover:border-indigo-500/30 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all"
+                  title="Regenerate secret"
+                >
+                  <RefreshCw size={16} />
+                </button>
                 <button 
                   onClick={() => handleDeleteKey(key.id)}
                   className="p-1.5 text-muted-foreground bg-muted border border-transparent hover:border-red-500/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all" 

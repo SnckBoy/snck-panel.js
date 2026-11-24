@@ -11,6 +11,7 @@ import {
   Cpu,
   Folder,
   Globe,
+  Globe2,
   HardDrive,
   Layers,
   Lock,
@@ -57,6 +58,7 @@ import FileManager from "../../components/FileManager";
 import ServerSettings from "../../components/ServerSettings";
 import ServerProperties from "../../components/ServerProperties";
 import ServerBackups from "../../components/ServerBackups";
+import WorldManager from "../../components/WorldManager";
 import PluginManager from "../../components/PluginManager";
 import ModManager from "../../components/ModManager";
 import ModpackManager from "../../components/ModpackManager";
@@ -226,6 +228,7 @@ export default function ServerDetail() {
     { id: "players", label: "Players", icon: Users },
     { id: "files", label: "Files", icon: Folder },
     { id: "backup", label: "Backups", icon: Archive },
+    ...(isProxy ? [] : [{ id: "worlds", label: "Worlds", icon: Globe2 } as Tab]),
     ...(isProxy ? [] : [{ id: "properties", label: "Properties", icon: Sliders } as Tab]),
     ...(hasPlugins ? [{ id: "plugins", label: "Plugins", icon: Puzzle } as Tab] : []),
     ...(hasMods ? [{ id: "mods", label: "Mods", icon: Box } as Tab] : []),
@@ -377,6 +380,7 @@ export default function ServerDetail() {
         {tabId === "console" ? <div className="pn-sd-inner" style={{ paddingTop: 16 }}><ServerConsole key={id} serverId={id} server={server} /></div> : null}
         {tabId === "files" ? <div className="pn-sd-inner" style={{ paddingTop: 16 }}><FileManager key={id} serverId={id} /></div> : null}
         {tabId === "backup" ? <div className="pn-sd-inner" style={{ paddingTop: 16 }}><ServerBackups serverId={id} /></div> : null}
+        {tabId === "worlds" ? <div className="pn-sd-inner" style={{ paddingTop: 16 }}><WorldManager serverId={id} /></div> : null}
         {tabId === "plugins" ? <div className="pn-sd-inner" style={{ paddingTop: 16 }}><PluginManager serverId={id} /></div> : null}
         {tabId === "mods" ? <div className="pn-sd-inner" style={{ paddingTop: 16 }}><ModManager serverId={id} /></div> : null}
         {tabId === "modpacks" ? <div className="pn-sd-inner" style={{ paddingTop: 16 }}><ModpackManager serverId={id} /></div> : null}

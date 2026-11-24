@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "createuser": "tsx scripts/createuser.ts",
     "migrate:json": "tsx scripts/migrate-json-to-postgres.ts",
-    "test": "tsx scripts/test-themes.mts && tsx scripts/test-discord-rewards.mts && tsx scripts/test-node-lifecycle.mts",
+    "test": "tsx scripts/test-themes.mts && tsx scripts/test-discord-rewards.mts && tsx scripts/test-node-lifecycle.mts && tsx scripts/test-worlds-backups.mts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test:atomic-json": "tsx scripts/test-atomic-json.mts",

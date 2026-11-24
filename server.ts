@@ -266,9 +266,11 @@ app.get("/shironex-node.tar.gz", (_req, res) => {
 
 import { initSFTPServer } from "./src/server/services/sftp.js";
 import { startDiscordRewards, shutdownDiscordRewards } from "./src/server/services/discordRewards.js";
+import { startBackupScheduler, stopBackupScheduler } from "./src/server/services/backupScheduler.js";
 
 async function startServer() {
   await initSFTPServer();
+  startBackupScheduler();
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -299,6 +301,7 @@ const gracefulShutdown = (signal: string) => {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`Received ${signal}; stopping Discord rewards and panel listeners.`);
+  stopBackupScheduler();
   void shutdownDiscordRewards().finally(() => {
     io.close();
     httpServer.close(() => process.exit(0));

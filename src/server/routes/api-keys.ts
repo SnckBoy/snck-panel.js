@@ -85,6 +85,61 @@ router.post("/", async (req, res) => {
   }
 });
 
+// Update an API key's label, scopes, expiry or revocation state.
+router.patch("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { label, scopes, expires_at, revoked } = req.body;
+    if (label !== undefined && (typeof label !== "string" || label.trim().length < 1 || label.length > 100)) {
+      return res.status(400).json({ error: "Label must be a non-empty string of at most 100 characters" });
+    }
+    if (scopes !== undefined && (!Array.isArray(scopes) || scopes.length === 0 || scopes.length > 50 || !scopes.every((scope: unknown) => typeof scope === "string" && scope.length > 0 && scope.length <= 100))) {
+      return res.status(400).json({ error: "Scopes must be a non-empty array of valid strings" });
+    }
+    let normalizedExpiry: string | null | undefined;
+    if (expires_at === null || expires_at === "") normalizedExpiry = null;
+    else if (expires_at !== undefined) {
+      if (typeof expires_at !== "string" || !Number.isFinite(Date.parse(expires_at)) || Date.parse(expires_at) <= Date.now()) {
+        return res.status(400).json({ error: "Expiry must be a valid future date" });
+      }
+      normalizedExpiry = new Date(expires_at).toISOString();
+    }
+
+    const apiKeys = await readJSON("api_keys.json") || [];
+    const key = apiKeys.find((candidate: any) => candidate.id === id);
+    if (!key) return res.status(404).json({ error: "Key not found" });
+    if (label !== undefined) key.label = label.trim();
+    if (scopes !== undefined) key.scopes = scopes;
+    if (normalizedExpiry !== undefined) key.expires_at = normalizedExpiry;
+    if (revoked !== undefined) key.revoked = Boolean(revoked);
+    await writeJSON("api_keys.json", apiKeys);
+    return res.json({ success: true, id: key.id, label: key.label, scopes: key.scopes, expires_at: key.expires_at, revoked: key.revoked });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Rotate the secret while keeping the key record and its metadata.
+router.post("/:id/regenerate", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const apiKeys = await readJSON("api_keys.json") || [];
+    const key = apiKeys.find((candidate: any) => candidate.id === id);
+    if (!key) return res.status(404).json({ error: "Key not found" });
+
+    const keyString = `shironex-${crypto.randomBytes(32).toString("base64url")}`;
+    key.key_hash = crypto.createHash("sha256").update(keyString).digest("hex");
+    key.created_at = new Date().toISOString();
+    key.last_used_at = null;
+    key.revoked = false;
+    await writeJSON("api_keys.json", apiKeys);
+
+    return res.json({ success: true, key: keyString, id: key.id, label: key.label, scopes: key.scopes, expires_at: key.expires_at });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // Delete API Key
 router.delete("/:id", async (req, res) => {
   try {
