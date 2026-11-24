@@ -37,7 +37,8 @@ warn() { printf '%s[WARN]%s %s\n' "$YELLOW" "$R" "$*"; }
 die()  { printf '%s[FAIL]%s %s\n' "$RED" "$R" "$*" >&2; exit 1; }
 
 TTY_FD=3
-if { : >/dev/tty; } 2>/dev/null; then exec 3</dev/tty; else exec 3</dev/null; fi
+TTY_OK=0
+if { : >/dev/tty; } 2>/dev/null; then exec 3</dev/tty; TTY_OK=1; else exec 3</dev/null; fi
 ask() { local prompt="$1" default="${2:-}" answer=""; printf '%s' "$prompt" >&2; IFS= read -r -u 3 answer || true; printf '%s' "${answer:-$default}"; }
 pause() { printf '\n%sPress Enter to continue…%s' "$DIM" "$R" >&2; IFS= read -r -u 3 _ || true; }
 
@@ -108,7 +109,7 @@ write_env() {
     return
   fi
   local public_url=""
-  if [[ "${SNCK_NONINTERACTIVE:-0}" != "1" && -r /dev/tty ]]; then
+  if [[ "${SNCK_NONINTERACTIVE:-0}" != "1" && "$TTY_OK" == "1" ]]; then
     printf '\n%sPanel port [%s]:%s ' "$B" "$PORT" "$R" >&2
     IFS= read -r -u 3 answer_port || true
     PORT="${answer_port:-$PORT}"
@@ -273,7 +274,7 @@ service_menu() {
 create_user() {
   require_root
   [[ -d "$APP_DIR" ]] || die "Install the panel first."
-  if [[ ! -r /dev/tty ]]; then die "User creation needs an interactive terminal."; fi
+  if [[ "$TTY_OK" != "1" ]]; then die "User creation needs an interactive terminal."; fi
   ( cd "$APP_DIR" && runuser -u "$SERVICE_USER" -- env HOME="$SERVICE_HOME" npm run createuser )
   has_systemd && systemctl restart "$SERVICE" || true
   ok "User saved. Restart complete."
@@ -362,7 +363,7 @@ main() {
     esac
   done
 
-  if [[ "${SNCK_NONINTERACTIVE:-0}" == "1" || ! -r /dev/tty ]]; then
+  if [[ "${SNCK_NONINTERACTIVE:-0}" == "1" || "$TTY_OK" != "1" ]]; then
     install_panel
     exit 0
   fi
