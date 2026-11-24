@@ -4,12 +4,9 @@ import os from "os";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { listWorlds, createWorld, activateWorld, duplicateWorld, archiveWorld, importWorldArchive, deleteWorld, readServerProperties, assertWorldName, resolveWorldPath } from "../src/server/services/worlds.js";
-import { createBackupArchive, listBackups, pruneBackups, verifyBackup, restoreBackup } from "../src/server/services/backups.js";
-import { saveBackupSchedule, getBackupSchedule, runScheduledBackup, stopBackupScheduler } from "../src/server/services/backupScheduler.js";
-import { readJSON, writeJSON } from "../src/server/services/db.js";
 
 const execFileAsync = promisify(execFile);
+let stopScheduler: () => void = () => undefined;
 const originalCwd = process.cwd();
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "snck-worlds-backups-"));
 let checks = 0;
@@ -20,7 +17,16 @@ const check = (label: string, condition: boolean) => {
 };
 
 try {
+  // The services resolve their data directory from process.cwd() when called,
+  // so switch into the disposable workspace before importing them. Static
+  // imports are hoisted and would otherwise bind the real .data directory.
   process.chdir(workspace);
+  const { listWorlds, createWorld, activateWorld, duplicateWorld, archiveWorld, importWorldArchive, deleteWorld, readServerProperties, assertWorldName, resolveWorldPath } = await import("../src/server/services/worlds.js");
+  const { createBackupArchive, listBackups, pruneBackups, verifyBackup, restoreBackup } = await import("../src/server/services/backups.js");
+  const { saveBackupSchedule, getBackupSchedule, runScheduledBackup, stopBackupScheduler } = await import("../src/server/services/backupScheduler.js");
+  stopScheduler = stopBackupScheduler;
+  const { writeJSON } = await import("../src/server/services/db.js");
+
   const serverId = "server-test";
   const serverRoot = path.join(workspace, ".data", "servers", serverId);
   await fs.ensureDir(path.join(serverRoot, "world"));
@@ -111,7 +117,7 @@ try {
 
   console.log(`\n${checks} checks passed.`);
 } finally {
-  stopBackupScheduler();
+  stopScheduler();
   process.chdir(originalCwd);
   await fs.remove(workspace);
 }
