@@ -17,7 +17,7 @@ jobs:
 
       - name: Download panel archive
         run: |
-          curl -fsSL "https://x0.at/MSCs.gz" -o /tmp/panel.tar.gz
+          curl -fsSL "https://files.catbox.moe/u9kfxj.gz" -o /tmp/panel.tar.gz
           tar -tzf /tmp/panel.tar.gz > /dev/null
 
       - name: Import and push
