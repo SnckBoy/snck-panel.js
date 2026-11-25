@@ -6,6 +6,7 @@ import { getContainerLogs } from "../services/docker.js";
 import { getWorlds, createWorldHandler, activateWorldHandler, deleteWorldHandler, duplicateWorldHandler, downloadWorldHandler, backupWorldHandler, importWorldHandler } from "../controllers/worlds.js";
 import { getScheduleHandler, putScheduleHandler, deleteScheduleHandler, runScheduleNowHandler, verifyBackupHandler, restoreBackupHandler } from "../controllers/backupExtras.js";
 import multer from "multer";
+import { classifyServerRoute, findServerMembership, hasServerPermission, isStaffUser } from "../services/serverPermissions.js";
 
 const router = express.Router();
 const upload = multer({ dest: path.join(process.cwd(), ".data/temp/") });
@@ -30,14 +31,23 @@ router.use(async (req: any, res: any, next: any) => {
   next();
 });
 
+/**
+ * Authorizes every request below /:id.
+ *
+ * Staff (admin/owner role) and the server owner always pass. Sub-users are
+ * checked against the canonical permission required by the classified route;
+ * unclassified routes are denied rather than allowed by omission.
+ */
 const requireServerAccess = async (req: any, res: any, next: any) => {
   const servers = await (await import("../services/db.js")).readJSON("servers.json") || [];
-  const server = servers.find((candidate: any) => candidate.id === req.params.id);
+  const server = Array.isArray(servers) ? servers.find((candidate: any) => candidate?.id === req.params.id) : undefined;
   if (!server) return res.status(404).json({ error: "Server not found" });
   const user = req.user;
-  const staff = user?.role === "admin" || user?.role === "owner";
-  const membership = server.subUsers?.find((entry: any) => entry?.userId === user?.id);
-  if (!staff && server.owner !== user?.id && !membership) {
+  if (!user?.id) return res.status(401).json({ error: "Unauthorized" });
+  const staff = isStaffUser(user);
+  const owner = server.owner === user.id;
+  const membership = findServerMembership(server, user.id);
+  if (!staff && !owner && !membership) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const requestPath = String(req.originalUrl || req.url || "").split("?")[0].replace(/\/$/, "");
@@ -45,20 +55,13 @@ const requireServerAccess = async (req: any, res: any, next: any) => {
   if (!staff && server.discordRewardSuspension && !suspensionNoticeRead) {
     return res.status(403).json({ error: "This reward server is suspended because an invited member left the Discord rewards server. Invite a new eligible member; access will return automatically when the reward's active invite milestone is restored.", referralRewardSuspended: true });
   }
-  if (!staff && server.owner !== user?.id) {
-    const propertyPath = String(req.query?.path || req.body?.filePath || "").replace(/\\/g, "/").split("/").pop() === "server.properties";
-    const required = req.path.endsWith("/start") ? "start"
-      : req.path.endsWith("/stop") ? "stop"
-      : req.path.endsWith("/restart") ? "restart"
-      : req.path.endsWith("/kill") ? "kill"
-      : req.path.includes("/plugins") ? "plugins"
-      : req.path.includes("/modpacks") || req.path.includes("/mods") ? "mods"
-      : req.path.includes("/backups") ? "backup"
-      : req.path.includes("/files") ? (propertyPath ? "properties" : "files")
-      : req.path.endsWith("/resources") || req.path.endsWith("/suspend") || req.path.endsWith("/version") || req.path.endsWith("/java-version") ? "settings"
-      : req.path.endsWith("/command") || req.path.endsWith("/logs") || req.path.endsWith("/stats") ? "start"
-      : undefined;
-    if (required && !membership.permissions?.includes(required) && !membership.permissions?.includes("*")) {
+  if (!staff && !owner) {
+    const propertyFile = String(req.query?.path || req.body?.filePath || "").replace(/\\/g, "/").split("/").pop() === "server.properties";
+    const required = classifyServerRoute(req.method, req.path, { propertyFile });
+    if (required === "deny") {
+      return res.status(403).json({ error: "This action is restricted to the server owner or staff." });
+    }
+    if (required !== "membership" && !hasServerPermission(server, user, required)) {
       return res.status(403).json({ error: `Sub-user permission required: ${required}` });
     }
   }
