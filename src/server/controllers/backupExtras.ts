@@ -2,11 +2,39 @@ import { Request, Response } from "express";
 import { getBackupSchedule, saveBackupSchedule, removeBackupSchedule, runScheduledBackup } from "../services/backupScheduler.js";
 import { restoreBackup, verifyBackup } from "../services/backups.js";
 import { audit } from "../services/security.js";
+import { hasServerPermission, isServerOwnerOrStaff } from "../services/serverPermissions.js";
 
-const isOwnerOrStaff = (req: Request) => {
-  const user = (req as any).user;
+/**
+ * Granular backup authorization. The route guard enforces the same canonical
+ * permissions; these checks keep every handler safe on its own.
+ *
+ * - backups.read    listing, downloading, schedule viewing, verification
+ * - backups.create  creating archives and running the schedule
+ * - backups.restore restoring an archive
+ * - backups.delete  deleting an archive
+ *
+ * Changing or deleting the schedule itself is reserved for the server owner
+ * and staff; it is never delegated through backups.create.
+ */
+const requireBackupPermission = (
+  req: Request,
+  res: Response,
+  permission: "backups.read" | "backups.create" | "backups.restore" | "backups.delete",
+): boolean => {
   const server = (req as any).server;
-  return user?.role === "admin" || user?.role === "owner" || server?.owner === user?.id;
+  const user = (req as any).user;
+  if (hasServerPermission(server, user, permission)) return true;
+  res.status(403).json({ error: `Sub-user permission required: ${permission}` });
+  return false;
+};
+
+/** Rewriting or deleting a schedule requires the server owner or staff. */
+const requireScheduleOwner = (req: Request, res: Response): boolean => {
+  const server = (req as any).server;
+  const user = (req as any).user;
+  if (isServerOwnerOrStaff(server, user)) return true;
+  res.status(403).json({ error: "Only the server owner or staff can change the backup schedule." });
+  return false;
 };
 
 const isLocal = (req: Request, res: Response): boolean => {
@@ -22,6 +50,7 @@ const isLocal = (req: Request, res: Response): boolean => {
 };
 
 export const getScheduleHandler = async (req: Request, res: Response) => {
+  if (!requireBackupPermission(req, res, "backups.read")) return;
   try {
     res.json(await getBackupSchedule(req.params.id));
   } catch (error: any) {
@@ -30,7 +59,7 @@ export const getScheduleHandler = async (req: Request, res: Response) => {
 };
 
 export const putScheduleHandler = async (req: Request, res: Response) => {
-  if (!isOwnerOrStaff(req)) return res.status(403).json({ error: "Only the server owner or staff can change backup schedules." });
+  if (!requireScheduleOwner(req, res)) return;
   try {
     const schedule = await saveBackupSchedule(req.params.id, req.body || {});
     await audit("backup.schedule_updated", req, { serverId: req.params.id, enabled: schedule.enabled, intervalHours: schedule.intervalHours, retention: schedule.retention });
@@ -41,7 +70,7 @@ export const putScheduleHandler = async (req: Request, res: Response) => {
 };
 
 export const deleteScheduleHandler = async (req: Request, res: Response) => {
-  if (!isOwnerOrStaff(req)) return res.status(403).json({ error: "Only the server owner or staff can change backup schedules." });
+  if (!requireScheduleOwner(req, res)) return;
   try {
     await removeBackupSchedule(req.params.id);
     res.json({ success: true });
@@ -51,7 +80,7 @@ export const deleteScheduleHandler = async (req: Request, res: Response) => {
 };
 
 export const runScheduleNowHandler = async (req: Request, res: Response) => {
-  if (!isOwnerOrStaff(req)) return res.status(403).json({ error: "Only the server owner or staff can run scheduled backups." });
+  if (!requireBackupPermission(req, res, "backups.create")) return;
   if (!isLocal(req, res)) return;
   try {
     const result = await runScheduledBackup(req.params.id);
@@ -63,6 +92,7 @@ export const runScheduleNowHandler = async (req: Request, res: Response) => {
 };
 
 export const verifyBackupHandler = async (req: Request, res: Response) => {
+  if (!requireBackupPermission(req, res, "backups.read")) return;
   if (!isLocal(req, res)) return;
   try {
     res.json(await verifyBackup(req.params.id, req.params.filename));
@@ -72,7 +102,7 @@ export const verifyBackupHandler = async (req: Request, res: Response) => {
 };
 
 export const restoreBackupHandler = async (req: Request, res: Response) => {
-  if (!isOwnerOrStaff(req)) return res.status(403).json({ error: "Only the server owner or staff can restore a backup." });
+  if (!requireBackupPermission(req, res, "backups.restore")) return;
   if (!isLocal(req, res)) return;
   const server = (req as any).server;
   if (String(server?.status || "").toLowerCase() === "online") {
