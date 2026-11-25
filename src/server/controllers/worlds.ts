@@ -12,6 +12,18 @@ import {
   streamWorldZip,
 } from "../services/worlds.js";
 import { audit } from "../services/security.js";
+import { hasServerPermission } from "../services/serverPermissions.js";
+
+/** Defense in depth: the route guard also enforces these permissions. */
+const requireWorldPermission = (req: Request, res: Response, permission: "worlds.read" | "worlds.manage"): boolean => {
+  const server = (req as any).server;
+  const user = (req as any).user;
+  if (hasServerPermission(server, user, permission)) return true;
+  res.status(403).json({
+    error: permission === "worlds.read" ? "World read permission required." : "World management permission required.",
+  });
+  return false;
+};
 
 const localOnly = (req: Request, res: Response): boolean => {
   const server = (req as any).server;
@@ -33,6 +45,7 @@ const runningNotice = (req: Request): string | null => {
 };
 
 export const getWorlds = async (req: Request, res: Response) => {
+  if (!requireWorldPermission(req, res, "worlds.read")) return;
   if (!localOnly(req, res)) return;
   try {
     const result = await listWorlds(req.params.id);
@@ -43,6 +56,7 @@ export const getWorlds = async (req: Request, res: Response) => {
 };
 
 export const createWorldHandler = async (req: Request, res: Response) => {
+  if (!requireWorldPermission(req, res, "worlds.manage")) return;
   if (!localOnly(req, res)) return;
   try {
     const result = await createWorld(req.params.id, req.body || {});
@@ -57,6 +71,7 @@ export const createWorldHandler = async (req: Request, res: Response) => {
 };
 
 export const activateWorldHandler = async (req: Request, res: Response) => {
+  if (!requireWorldPermission(req, res, "worlds.manage")) return;
   if (!localOnly(req, res)) return;
   try {
     const result = await activateWorld(req.params.id, req.params.name);
@@ -68,6 +83,7 @@ export const activateWorldHandler = async (req: Request, res: Response) => {
 };
 
 export const deleteWorldHandler = async (req: Request, res: Response) => {
+  if (!requireWorldPermission(req, res, "worlds.manage")) return;
   if (!localOnly(req, res)) return;
   const running = runningNotice(req);
   if (running) return res.status(409).json({ error: running });
@@ -81,6 +97,7 @@ export const deleteWorldHandler = async (req: Request, res: Response) => {
 };
 
 export const duplicateWorldHandler = async (req: Request, res: Response) => {
+  if (!requireWorldPermission(req, res, "worlds.manage")) return;
   if (!localOnly(req, res)) return;
   const running = runningNotice(req);
   if (running) return res.status(409).json({ error: running });
@@ -94,6 +111,7 @@ export const duplicateWorldHandler = async (req: Request, res: Response) => {
 };
 
 export const downloadWorldHandler = async (req: Request, res: Response) => {
+  if (!requireWorldPermission(req, res, "worlds.read")) return;
   if (!localOnly(req, res)) return;
   try {
     const { archive, filename } = await streamWorldZip(req.params.id, req.params.name);
@@ -112,6 +130,7 @@ export const downloadWorldHandler = async (req: Request, res: Response) => {
 };
 
 export const backupWorldHandler = async (req: Request, res: Response) => {
+  if (!requireWorldPermission(req, res, "worlds.manage")) return;
   if (!localOnly(req, res)) return;
   const running = runningNotice(req);
   if (running) return res.status(409).json({ error: running });
@@ -125,6 +144,7 @@ export const backupWorldHandler = async (req: Request, res: Response) => {
 };
 
 export const importWorldHandler = async (req: Request, res: Response) => {
+  if (!requireWorldPermission(req, res, "worlds.manage")) return;
   if (!localOnly(req, res)) return;
   const running = runningNotice(req);
   if (running) return res.status(409).json({ error: running });
